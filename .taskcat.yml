@@ -1,0 +1,15 @@
+# @format
+
+project:
+  name: vpc-infra-test
+  regions:
+    - ap-southeast-1
+  parameters:
+    EnvironmentName: Test
+    VpcCIDR: 10.10.0.0/16
+    PublicSubnet1CIDR: 10.10.1.0/24
+    PrivateSubnet1CIDR: 10.10.2.0/24
+    AllowedSSHIP: 0.0.0.0/0
+    KeyName: my-keypair
+    InstanceType: t2.micro
+    AmiId: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2

@@ -1,0 +1,21 @@
+# @format
+
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+    commands:
+      - pip install cfn-lint taskcat
+  pre_build:
+    commands:
+      - echo "Running cfn-lint..."
+      - cfn-lint bt1.yaml
+  build:
+    commands:
+      - echo "Running taskcat tests..."
+      - taskcat test run
+artifacts:
+  files:
+    - "**/*"
