@@ -32,6 +32,7 @@ Parameters:
   KeyName:
     Description: Name of an existing EC2 KeyPair for SSH access
     Type: AWS::EC2::KeyPair::KeyName
+    Default: hiep123
     ConstraintDescription: Must be the name of an existing EC2 KeyPair
 
   InstanceType:
