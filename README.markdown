@@ -1,19 +1,18 @@
-# AWS CodePipeline with Tomcat Deployment using CloudFormation
+# AWS CodePipeline Infrastructure Setup with CloudFormation
 
-This guide explains how to set up an AWS CodePipeline to automate the CI/CD process for a Java application deployed to Apache Tomcat on AWS Elastic Beanstalk using the `bt1.yaml` CloudFormation template.
+This guide explains how to set up the infrastructure for an AWS CodePipeline using the `bt1.yaml` CloudFormation template. The pipeline is configured to use AWS CodeCommit as the source, AWS CodeBuild for building, and AWS Elastic Beanstalk with a Tomcat environment, but it does not include application code deployment.
 
 ## Overview
-The pipeline uses:
-- **AWS CodeCommit** as the source repository.
-- **AWS CodeBuild** to build the Java application.
-- **AWS Elastic Beanstalk** to deploy the application to a Tomcat environment.
-- **CloudFormation** to define and deploy the infrastructure.
+The pipeline sets up:
+- **AWS CodeCommit**: Source repository for pipeline triggers.
+- **AWS CodeBuild**: Build environment for processing source changes.
+- **AWS Elastic Beanstalk**: Tomcat environment as the deployment target.
+- **CloudFormation**: Defines the infrastructure in `bt1.yaml`.
 
 ## Prerequisites
 - **AWS Account**: Active AWS account with IAM permissions for CloudFormation, CodePipeline, CodeCommit, CodeBuild, Elastic Beanstalk, and S3.
 - **AWS CLI**: Installed and configured (`aws configure`).
-- **Java Application**: A Java web application (e.g., a `.war` file) in a CodeCommit repository.
-- **Maven**: Used for building the application (ensure `pom.xml` is in the repository).
+- **CodeCommit Repository**: An empty or existing repository to trigger the pipeline.
 
 ## Installation
 1. **Install AWS CLI**:
@@ -35,9 +34,6 @@ The pipeline uses:
    .
    ├── bt1.yaml
    ├── buildspec.yml
-   ├── pom.xml
-   ├── src/
-   │   └── (Your Java application source code)
    └── README.md
    ```
 
@@ -46,180 +42,7 @@ The pipeline uses:
      ```bash
      aws codecommit create-repository --repository-name my-tomcat-repo
      ```
-   - Push your Java application code (including `pom.xml` and `buildspec.yml`) to the repository.
-
-## CloudFormation Template
-The `bt1.yaml` CloudFormation template defines the pipeline, IAM roles, S3 bucket, CodeBuild project, and Elastic Beanstalk environment. Below is an example:
-
-<xaiArtifact artifact_id="c568e312-18c8-4e46-bb2b-7e34d4d0dfd6" artifact_version_id="ff1cd942-fd83-4a7c-9921-a29721fdb239" title="bt1.yaml" contentType="text/yaml">
-```yaml
-AWSTemplateFormatVersion: '2010-09-09'
-Description: AWS CodePipeline for Tomcat Deployment to Elastic Beanstalk
-
-Parameters:
-  PipelineName:
-    Type: String
-    Default: tomcat-pipeline
-  RepositoryName:
-    Type: String
-    Default: my-tomcat-repo
-  BranchName:
-    Type: String
-    Default: main
-  CodeBuildProjectName:
-    Type: String
-    Default: tomcat-build-project
-  ArtifactBucketName:
-    Type: String
-    Default: tomcat-pipeline-artifacts
-  ElasticBeanstalkAppName:
-    Type: String
-    Default: tomcat-app
-  ElasticBeanstalkEnvName:
-    Type: String
-    Default: tomcat-env
-
-Resources:
-  ArtifactBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref ArtifactBucketName
-
-  PipelineRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codepipeline.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: PipelinePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:*
-                  - codecommit:*
-                  - codebuild:*
-                  - elasticbeanstalk:*
-                  - iam:PassRole
-                Resource: '*'
-
-  CodeBuildRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codebuild.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CodeBuildPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:*
-                  - logs:*
-                  - codecommit:*
-                Resource: '*'
-
-  CodeBuildProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Name: !Ref CodeBuildProjectName
-      Source:
-        Type: CODECOMMIT
-        Location: !Sub https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}
-      Artifacts:
-        Type: S3
-        Location: !Ref ArtifactBucket
-        Name: build-output
-      Environment:
-        Type: LINUX_CONTAINER
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
-        ComputeType: BUILD_GENERAL1_SMALL
-        EnvironmentVariables:
-          - Name: JAVA_HOME
-            Value: /usr/lib/jvm/java-11-amazon-corretto
-      ServiceRole: !GetAtt CodeBuildRole.Arn
-
-  ElasticBeanstalkApp:
-    Type: AWS::ElasticBeanstalk::Application
-    Properties:
-      ApplicationName: !Ref ElasticBeanstalkAppName
-
-  ElasticBeanstalkEnv:
-    Type: AWS::ElasticBeanstalk::Environment
-    Properties:
-      ApplicationName: !Ref ElasticBeanstalkApp
-      EnvironmentName: !Ref ElasticBeanstalkEnvName
-      SolutionStackName: 64bit Amazon Linux 2023 v4.0.10 running Tomcat 9 Corretto 11
-      OptionSettings:
-        - Namespace: aws:autoscaling:launchconfiguration
-          OptionName: InstanceType
-          Value: t2.micro
-
-  CodePipeline:
-    Type: AWS::CodePipeline::Pipeline
-    Properties:
-      Name: !Ref PipelineName
-      RoleArn: !GetAtt PipelineRole.Arn
-      ArtifactStore:
-        Type: S3
-        Location: !Ref ArtifactBucket
-      Stages:
-        - Name: Source
-          Actions:
-            - Name: SourceAction
-              ActionTypeId:
-                Category: Source
-                Owner: AWS
-                Provider: CodeCommit
-                Version: '1'
-              OutputArtifacts:
-                - Name: SourceOutput
-              Configuration:
-                RepositoryName: !Ref RepositoryName
-                BranchName: !Ref BranchName
-              RunOrder: 1
-        - Name: Build
-          Actions:
-            - Name: BuildAction
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: '1'
-              InputArtifacts:
-                - Name: SourceOutput
-              OutputArtifacts:
-                - Name: BuildOutput
-              Configuration:
-                ProjectName: !Ref CodeBuildProjectName
-              RunOrder: 1
-        - Name: Deploy
-          Actions:
-            - Name: DeployAction
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: ElasticBeanstalk
-                Version: '1'
-              InputArtifacts:
-                - Name: BuildOutput
-              Configuration:
-                ApplicationName: !Ref ElasticBeanstalkAppName
-                EnvironmentName: !Ref ElasticBeanstalkEnvName
-              RunOrder: 1
-```
+   - Optionally, push an empty `buildspec.yml` or placeholder files to the repository.
 
 ## Configuration
 1. **AWS Credentials**:
@@ -229,62 +52,28 @@ Resources:
      ```
 
 2. **Buildspec File**:
-   - Create a `buildspec.yml` in the repository root:
+   - Create a minimal `buildspec.yml` in the repository root to satisfy CodeBuild requirements:
      ```yaml
      version: 0.2
      phases:
-       install:
-         runtime-versions:
-           java: corretto11
        build:
          commands:
-           - echo "Building the Java application"
-           - mvn clean package
+           - echo "No application code to build. Infrastructure setup only."
      artifacts:
        files:
-         - target/*.war
+         - README.md
        discard-paths: yes
      ```
 
-3. **Java Application**:
-   - Ensure your Java application has a `pom.xml` for Maven.
-   - Example `pom.xml` snippet:
-     ```xml
-     <project>
-       <modelVersion>4.0.0</modelVersion>
-       <groupId>com.example</groupId>
-       <artifactId>my-tomcat-app</artifactId>
-       <version>1.0-SNAPSHOT</version>
-       <packaging>war</packaging>
-       <dependencies>
-         <dependency>
-           <groupId>javax.servlet</groupId>
-           <artifactId>javax.servlet-api</artifactId>
-           <version>4.0.1</version>
-           <scope>provided</scope>
-         </dependency>
-       </dependencies>
-       <build>
-         <plugins>
-           <plugin>
-             <groupId>org.apache.maven.plugins</groupId>
-             <artifactId>maven-war-plugin</artifactId>
-             <version>3.3.2</version>
-           </plugin>
-         </plugins>
-       </build>
-     </project>
-     ```
-
-4. **Validate Template**:
-   - Validate the CloudFormation template:
+3. **Validate Template**:
+   - Validate the `bt1.yaml` CloudFormation template:
      ```bash
      aws cloudformation validate-template --template-body file://bt1.yaml
      ```
 
-## Deploying the Pipeline
+## Deploying the Infrastructure
 1. **Create the Stack**:
-   - Deploy the CloudFormation stack:
+   - Deploy the CloudFormation stack to set up the pipeline and infrastructure:
      ```bash
      aws cloudformation create-stack \
        --stack-name tomcat-pipeline-stack \
@@ -312,14 +101,15 @@ Resources:
      aws codepipeline get-pipeline-state --name tomcat-pipeline
      ```
 
-4. **Access the Application**:
-   - Once deployed, find the Elastic Beanstalk environment URL in the AWS Console or via:
+4. **Access the Elastic Beanstalk Environment**:
+   - Find the Elastic Beanstalk environment URL in the AWS Console or via:
      ```bash
      aws elasticbeanstalk describe-environments --environment-names tomcat-env
      ```
+   - Note: No application is deployed, so the environment will run the default Tomcat page.
 
 5. **Update the Stack** (if needed):
-   - Update with changes:
+   - Update with changes to `bt1.yaml`:
      ```bash
      aws cloudformation update-stack \
        --stack-name tomcat-pipeline-stack \
@@ -343,10 +133,10 @@ Resources:
 
 ## Best Practices
 - **Secure IAM Roles**: Use least-privilege policies for pipeline and CodeBuild roles.
-- **Version Control**: Store `bt1.yaml`, `buildspec.yml`, and application code in a repository, excluding sensitive data.
+- **Version Control**: Store `bt1.yaml` and `buildspec.yml` in a repository, excluding sensitive data.
 - **Logging**: Enable CloudWatch Logs for CodePipeline, CodeBuild, and Elastic Beanstalk.
-- **Testing**: Test the pipeline in a staging environment before production.
-- **Backup**: Regularly back up the CodeCommit repository and S3 artifacts.
+- **Testing**: Test the infrastructure in a non-production environment first.
+- **Backup**: Back up the CodeCommit repository and S3 artifacts regularly.
 
 ## Troubleshooting
 - **Stack Creation Fails**:
@@ -358,11 +148,11 @@ Resources:
    - Verify CodeCommit repository and branch exist.
    - Check IAM role permissions for CodeCommit.
 - **Build Stage Errors**:
-   - Ensure `buildspec.yml` and `pom.xml` are valid.
-   - Verify CodeBuild environment (e.g., Java version).
+   - Ensure `buildspec.yml` is present and valid.
+   - Verify CodeBuild environment settings.
 - **Deployment Issues**:
    - Confirm Elastic Beanstalk environment settings and Tomcat compatibility.
-   - Check application logs in CloudWatch or Elastic Beanstalk.
+   - Check CloudWatch Logs for Elastic Beanstalk errors.
 
 For detailed documentation, refer to:
 - [AWS CodePipeline Docs](https://docs.aws.amazon.com/codepipeline)
